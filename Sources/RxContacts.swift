@@ -106,18 +106,33 @@ extension Reactive where Base: CNContactStore {
             return Disposables.create()
         }
     }
-    
+
+    private class EnumerateContactsObserverWrapper {
+        typealias Element = (CNContact, UnsafeMutablePointer<ObjCBool>)
+        let observer: AnyObserver<Element>
+
+        init(observer: AnyObserver<Element>) {
+            self.observer = observer
+        }
+
+        func onNext(contact: CNContact, pointer: UnsafeMutablePointer<ObjCBool>) {
+            self.observer.onNext((contact, pointer))
+        }
+
+        deinit {
+            self.observer.onCompleted()
+        }
+    }
+
     /// Returns a Boolean value that indicates whether the enumeration of all contacts matching a contact fetch request executed successfully.
     ///
     /// - Parameter fetchRequest: The contact fetch request that specifies the search criteria.
     /// - Returns: true if enumeration of all contacts matching a contact fetch request executes successfully; otherwise, false
     public func enumerateContacts(with fetchRequest: CNContactFetchRequest) -> Observable<(CNContact, UnsafeMutablePointer<ObjCBool>)> {
         return Observable.create { observer in
+	    let wrapper = EnumerateContactsObserverWrapper(observer: observer)
             do {
-                try self.base.enumerateContacts(with: fetchRequest, usingBlock: { contact, pointer in
-                    observer.onNext((contact, pointer))
-                    observer.onCompleted()
-                })
+                try self.base.enumerateContacts(with: fetchRequest, usingBlock: wrapper.onNext)
                 
             } catch {
                 observer.onError(error)
